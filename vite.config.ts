@@ -5,7 +5,9 @@ import manifest from "./public/manifest.json";
 
 export default defineConfig({
   plugins: [react(), crx({ manifest })],
+  publicDir: "public", // This ensures public/ folder is copied
   build: {
+    outDir: "dist",
     rollupOptions: {
       input: {
         popup: "src/popup/popup.html",
