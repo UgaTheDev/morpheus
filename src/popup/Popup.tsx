@@ -31,8 +31,33 @@ export const Popup: React.FC = () => {
     }
   };
 
-  const openSidePanel = () => {
-    chrome.sidePanel.open({ windowId: chrome.windows.WINDOW_ID_CURRENT });
+  const openSidePanel = async () => {
+    try {
+      // Get current tab/window
+      const [tab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+
+      if (tab.windowId) {
+        // Open side panel
+        await chrome.sidePanel.open({ windowId: tab.windowId });
+
+        // Close popup
+        window.close();
+      }
+    } catch (error) {
+      console.error("Failed to open side panel:", error);
+      // Fallback: try with WINDOW_ID_CURRENT
+      try {
+        await chrome.sidePanel.open({
+          windowId: chrome.windows.WINDOW_ID_CURRENT,
+        });
+        window.close();
+      } catch (fallbackError) {
+        console.error("Fallback also failed:", fallbackError);
+      }
+    }
   };
 
   const requestHelp = async () => {
@@ -163,20 +188,21 @@ export const Popup: React.FC = () => {
 
         {/* Actions */}
         <div className="space-y-2">
+          {/* UPDATED: Primary action is now View Dashboard */}
           <button
-            onClick={requestHelp}
-            className="w-full bg-blue-500 text-white px-4 py-3 rounded-lg font-medium hover:bg-blue-600 transition-colors flex items-center justify-center gap-2"
+            onClick={openSidePanel}
+            className="w-full bg-blue-500 text-white px-4 py-3 rounded-lg font-medium hover:bg-blue-600 transition-colors flex items-center justify-center gap-2 shadow-sm"
           >
-            <Zap className="w-4 h-4" />
-            Need Help?
+            <BarChart3 className="w-5 h-5" />
+            📊 Open Stats Dashboard
           </button>
 
           <button
-            onClick={openSidePanel}
+            onClick={requestHelp}
             className="w-full bg-white text-gray-700 px-4 py-3 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 border border-gray-200"
           >
-            <BarChart3 className="w-4 h-4" />
-            View Dashboard
+            <Zap className="w-4 h-4" />
+            Need Help?
           </button>
         </div>
 
