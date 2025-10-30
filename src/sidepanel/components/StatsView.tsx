@@ -98,6 +98,21 @@ export const StatsView: React.FC<StatsViewProps> = () => {
     return stats.focusTimeMs + stats.neutralTimeMs + stats.distractionTimeMs;
   };
 
+  const addTestData = async () => {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "ADD_TEST_DATA",
+      });
+
+      if (response?.success) {
+        console.log("✅ Test data added!");
+        await loadStats(); // Refresh the view
+      }
+    } catch (error) {
+      console.error("Failed to add test data:", error);
+    }
+  };
+
   const exportStats = async () => {
     try {
       const data = await statsDB.exportStats();
@@ -453,6 +468,20 @@ export const StatsView: React.FC<StatsViewProps> = () => {
           </Card>
         </div>
       )}
+
+      {/* Test Data Button */}
+      <Card className="bg-yellow-50 border border-yellow-200">
+        <CardBody className="py-3">
+          <Button
+            onPress={addTestData}
+            color="warning"
+            variant="flat"
+            fullWidth
+          >
+            🧪 Add Test Data (5m productive + 10m distraction)
+          </Button>
+        </CardBody>
+      </Card>
 
       {/* Export Stats */}
       <Card className="bg-gray-50">

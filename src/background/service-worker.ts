@@ -359,6 +359,38 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           break;
         }
 
+        case "ADD_TEST_DATA": {
+          const today = new Date().toISOString().split("T")[0];
+
+          console.log("🧪 Adding test data...");
+
+          await statsDB.recordSiteVisit({
+            url: "https://github.com/test",
+            title: "GitHub Test",
+            startTime: Date.now() - 300000,
+            endTime: Date.now(),
+            durationMs: 300000,
+            category: "productive",
+            subcategory: "coding",
+            date: today,
+          });
+
+          await statsDB.recordSiteVisit({
+            url: "https://youtube.com/test",
+            title: "YouTube Test",
+            startTime: Date.now() - 600000,
+            endTime: Date.now(),
+            durationMs: 600000,
+            category: "distraction",
+            subcategory: "entertainment",
+            date: today,
+          });
+
+          console.log("✅ Test data added!");
+          sendResponse({ success: true });
+          break;
+        }
+
         case "ANALYZE_INTENT": {
           if (chromeAI.isAIAvailable()) {
             const result = await chromeAI.analyzeIntent(message.patterns);
@@ -386,13 +418,3 @@ console.log("🎯 Morpheus service worker loaded");
 
 // Export for other files if needed
 export {};
-
-declare global {
-  interface Window {
-    statsDB: typeof statsDB;
-  }
-}
-
-// Expose statsDB to global scope for console testing
-(self as any).statsDB = statsDB;
-console.log("🧪 statsDB exposed to console");
