@@ -5,7 +5,7 @@ import type {
   BrowsingPattern,
 } from "../lib/types";
 import { db } from "../lib/db";
-import { getAIClient } from "../lib/ai-client";
+import { getChromeAI } from "../lib/chrome-ai-client";
 import { behaviorMonitor } from "./behavior-monitor";
 
 export class InterventionManager {
@@ -213,7 +213,7 @@ export class InterventionManager {
 
   private async getAISuggestions(patterns: BrowsingPattern[]): Promise<string> {
     try {
-      const aiClient = getAIClient();
+      const chromeAI = getChromeAI();
 
       const recentActivity = patterns
         .slice(-10)
@@ -224,7 +224,7 @@ export class InterventionManager {
       
 Provide ONE brief, actionable suggestion to help the user regain focus. Keep it under 100 characters.`;
 
-      const response = await aiClient.analyzeIntent(prompt);
+      const response = await chromeAI.analyzeIntent(prompt);
       return response.trim();
     } catch (error) {
       console.error("AI suggestions failed:", error);

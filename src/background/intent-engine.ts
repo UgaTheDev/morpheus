@@ -1,4 +1,4 @@
-import { getAIClient } from "../lib/ai-client";
+import { getChromeAI } from "../lib/chrome-ai-client";
 import type { BrowsingPattern, Intent } from "../lib/types";
 
 export class IntentEngine {
@@ -17,7 +17,9 @@ export class IntentEngine {
     }
 
     try {
-      const aiClient = getAIClient();
+      const chromeAI = getChromeAI();
+      await chromeAI.initialize();
+
       const recentPatterns = this.getRecentPatterns(30 * 60 * 1000); // Last 30 minutes
 
       if (recentPatterns.length === 0) {
@@ -25,7 +27,7 @@ export class IntentEngine {
       }
 
       const prompt = this.buildAnalysisPrompt(recentPatterns);
-      const response = await aiClient.analyzeIntent(prompt);
+      const response = await chromeAI.analyzeIntent(prompt);
 
       const intent = this.parseIntentResponse(response, recentPatterns);
       this.currentIntent = intent;
@@ -43,7 +45,7 @@ export class IntentEngine {
     goal: string
   ): Promise<number> {
     try {
-      const aiClient = getAIClient();
+      const chromeAI = getChromeAI();
       const relevantPatterns = patterns.filter((p) =>
         this.isRelevantToGoal(p, goal)
       );
@@ -60,7 +62,7 @@ Return a progress percentage (0-100) and brief explanation.
 Format: {"progress": 75, "explanation": "User has completed research phase"}
 `;
 
-      const response = await aiClient.analyzeIntent(prompt);
+      const response = await chromeAI.analyzeIntent(prompt);
       const result = JSON.parse(response);
       return result.progress || 0;
     } catch (error) {
@@ -71,28 +73,36 @@ Format: {"progress": 75, "explanation": "User has completed research phase"}
 
   async suggestNextAction(patterns: BrowsingPattern[]): Promise<string[]> {
     try {
-      const aiClient = getAIClient();
+      const chromeAI = getChromeAI();
       const recentPatterns = this.getRecentPatterns(60 * 60 * 1000); // Last hour
       const intent = await this.analyzeIntent(patterns);
 
-      const prompt = `
-Based on the user's current intent: "${intent.description}"
-And recent browsing patterns:
+      const context = `User's current intent: "${intent.description}"
+Recent browsing:
 ${recentPatterns
   .slice(0, 10)
   .map((p) => `- ${p.domain}: ${p.category}`)
   .join("\n")}
 
 Suggest 3-5 helpful next actions or resources.
-Format as JSON array: ["action1", "action2", ...]
-`;
+Format as JSON array: ["action1", "action2", ...]`;
 
-      const response = await aiClient.analyzeIntent(prompt);
-      const suggestions = JSON.parse(response);
-      return Array.isArray(suggestions) ? suggestions : [];
+      const response = await chromeAI.generateSuggestions(context);
+
+      try {
+        const suggestions = JSON.parse(response);
+        return Array.isArray(suggestions) ? suggestions : [response];
+      } catch {
+        // If not JSON, return as single suggestion
+        return [response];
+      }
     } catch (error) {
       console.error("Next action suggestion failed:", error);
-      return [];
+      return [
+        "Focus on your current task",
+        "Take a short break",
+        "Review your goals",
+      ];
     }
   }
 

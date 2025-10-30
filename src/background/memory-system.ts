@@ -1,6 +1,6 @@
 import type { BrowsingPattern, MemoryEntry, SearchResult } from "../lib/types";
 import { db } from "../lib/db";
-import { getAIClient } from "../lib/ai-client";
+import { getChromeAI } from "../lib/chrome-ai-client";
 import { cosineSimilarity } from "../lib/utils";
 
 export class MemorySystem {
@@ -120,7 +120,7 @@ export class MemorySystem {
         return "No activity during this time period.";
       }
 
-      const aiClient = getAIClient();
+      const chromeAI = getChromeAI();
       const patternSummary = patterns
         .map(
           (p) =>
@@ -133,7 +133,7 @@ ${patternSummary}
 
 Focus on main themes and activities.`;
 
-      return await aiClient.analyzeIntent(prompt);
+      return await chromeAI.analyzeIntent(prompt);
     } catch (error) {
       console.error("Failed to summarize time window:", error);
       return "Unable to generate summary.";
@@ -171,7 +171,7 @@ Focus on main themes and activities.`;
     if (patterns.length === 0) return [];
 
     try {
-      const aiClient = getAIClient();
+      const chromeAI = getChromeAI();
       const domains = [...new Set(patterns.map((p) => p.domain))].slice(0, 20);
 
       const prompt = `Extract 3-5 main topics from these browsing domains:
@@ -179,7 +179,7 @@ ${domains.join("\n")}
 
 Return as JSON array: ["topic1", "topic2", ...]`;
 
-      const response = await aiClient.analyzeIntent(prompt);
+      const response = await chromeAI.analyzeIntent(prompt);
       const topics = JSON.parse(response);
       return Array.isArray(topics) ? topics : [];
     } catch (error) {
@@ -201,8 +201,8 @@ Return as JSON array: ["topic1", "topic2", ...]`;
     }
 
     try {
-      const aiClient = getAIClient();
-      const embedding = await aiClient.generateEmbedding(text);
+      const chromeAI = getChromeAI();
+      const embedding = await chromeAI.generateEmbedding(text);
 
       // Cache the embedding
       this.embeddingCache.set(text, embedding);

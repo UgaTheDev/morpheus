@@ -1,252 +1,459 @@
-import React, { useEffect, useState } from "react";
-import type { BrowsingPattern, Intent } from "../../lib/types";
-import { db } from "../../lib/db";
-import { intentEngine } from "../../background/intent-engine";
-import { memorySystem } from "../../background/memory-system";
+// sidepanel/components/StatsView.tsx
+import React, { useState, useEffect } from "react";
+import { Card, CardBody, CardHeader } from "@heroui/card";
+import { Tabs, Tab } from "@heroui/tabs";
+import { Progress } from "@heroui/progress";
+import { Chip } from "@heroui/chip";
+import { statsDB, DailyStats, WeeklyStats } from "../../lib/stats-db";
 
-export const StatsView: React.FC = () => {
+interface StatsViewProps {}
+
+export const StatsView: React.FC<StatsViewProps> = () => {
+  const [selectedPeriod, setSelectedPeriod] = useState<
+    "today" | "week" | "month"
+  >("today");
+  const [todayStats, setTodayStats] = useState<DailyStats | null>(null);
+  const [weekStats, setWeekStats] = useState<WeeklyStats | null>(null);
+  const [streak, setStreak] = useState<number>(0);
   const [loading, setLoading] = useState(true);
-  const [currentIntent, setCurrentIntent] = useState<Intent | null>(null);
-  const [weeklyStats, setWeeklyStats] = useState<any>(null);
-  const [topicsOverTime, setTopicsOverTime] = useState<
-    Array<{ date: string; topics: string[] }>
-  >([]);
-  const [insights, setInsights] = useState<string[]>([]);
 
   useEffect(() => {
     loadStats();
-  }, []);
+
+    // Refresh every minute
+    const interval = setInterval(loadStats, 60000);
+    return () => clearInterval(interval);
+  }, [selectedPeriod]);
 
   const loadStats = async () => {
     setLoading(true);
     try {
-      const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-      const patterns = await db.getPatternsSince(weekAgo);
+      // Today's stats
+      const today = new Date().toISOString().split("T")[0];
+      const dailyStats = await statsDB.getDailyStatsForDate(today);
+      setTodayStats(dailyStats);
 
-      // Get current intent
-      const intent = await intentEngine.analyzeIntent(patterns);
-      setCurrentIntent(intent);
+      // Week stats
+      if (selectedPeriod === "week" || selectedPeriod === "month") {
+        const weekStart = getWeekStart(new Date());
+        const weekly = await statsDB.calculateWeeklyStats(weekStart);
+        setWeekStats(weekly);
+      }
 
-      // Calculate weekly statistics
-      const stats = calculateWeeklyStats(patterns);
-      setWeeklyStats(stats);
-
-      // Get topics over time
-      const topics = await memorySystem.getTopicsOverTime(7);
-      setTopicsOverTime(topics);
-
-      // Get insights
-      const suggestions = await intentEngine.suggestNextAction(patterns);
-      setInsights(suggestions);
+      // Current streak
+      const currentStreak = await statsDB.getCurrentStreak();
+      setStreak(currentStreak);
     } catch (error) {
-      console.error("Failed to load stats:", error);
+      console.error("Error loading stats:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const calculateWeeklyStats = (patterns: BrowsingPattern[]) => {
-    const totalTime = patterns.reduce((sum, p) => sum + p.duration, 0);
-    const avgSessionLength =
-      totalTime / Math.max(1, getUniqueSessions(patterns));
-
-    const categoryTime: Record<string, number> = {};
-    const dailyActivity: Record<string, number> = {};
-
-    patterns.forEach((p) => {
-      categoryTime[p.category] = (categoryTime[p.category] || 0) + p.duration;
-
-      const date = new Date(p.timestamp).toLocaleDateString();
-      dailyActivity[date] = (dailyActivity[date] || 0) + 1;
-    });
-
-    const topCategory = Object.entries(categoryTime).sort(
-      ([, a], [, b]) => b - a
-    )[0];
-
-    const mostActiveDay = Object.entries(dailyActivity).sort(
-      ([, a], [, b]) => b - a
-    )[0];
-
-    return {
-      totalTime,
-      totalSites: patterns.length,
-      avgSessionLength,
-      topCategory: topCategory ? topCategory[0] : "N/A",
-      mostActiveDay: mostActiveDay ? mostActiveDay[0] : "N/A",
-      categoryBreakdown: Object.entries(categoryTime)
-        .map(([category, time]) => ({
-          category,
-          time,
-          percentage: (time / totalTime) * 100,
-        }))
-        .sort((a, b) => b.time - a.time),
-    };
+  const getWeekStart = (date: Date): string => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust for Monday start
+    d.setDate(diff);
+    return d.toISOString().split("T")[0];
   };
 
-  const getUniqueSessions = (patterns: BrowsingPattern[]): number => {
-    const sessions = new Set(patterns.map((p) => p.sessionId));
-    return sessions.size;
-  };
-
-  const formatDuration = (ms: number): string => {
+  const formatTime = (ms: number): string => {
     const hours = Math.floor(ms / 3600000);
     const minutes = Math.floor((ms % 3600000) / 60000);
 
-    if (hours > 0) return `${hours}h ${minutes}m`;
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    }
     return `${minutes}m`;
   };
 
-  const getIntentEmoji = (type: string): string => {
-    const emojis: Record<string, string> = {
-      research: "🔍",
-      entertainment: "🎬",
-      work: "💼",
-      shopping: "🛒",
-      learning: "📚",
-      social: "👥",
-      other: "🌐",
-    };
-    return emojis[type] || "🌐";
+  const getScoreColor = (score: number): "success" | "warning" | "danger" => {
+    if (score >= 70) return "success";
+    if (score >= 40) return "warning";
+    return "danger";
   };
 
-  const getCategoryColor = (category: string): string => {
-    const colors: Record<string, string> = {
-      social: "#3b82f6",
-      news: "#ef4444",
-      shopping: "#10b981",
-      entertainment: "#f59e0b",
-      productivity: "#8b5cf6",
-      development: "#06b6d4",
-      learning: "#ec4899",
-      other: "#6b7280",
-    };
-    return colors[category] || colors.other;
+  const getStreakMessage = (streak: number): string => {
+    if (streak === 0) return "Start your streak today! 💪";
+    if (streak === 1) return "Great start! Keep it going! 🔥";
+    if (streak < 7) return `${streak} days strong! 🎯`;
+    if (streak < 30) return `${streak} days! You're on fire! 🔥🔥`;
+    return `${streak} days! Incredible! 🌟🔥`;
   };
 
-  if (loading) {
+  if (loading && !todayStats) {
     return (
-      <div className="stats-view loading">
-        <div className="spinner"></div>
-        <p>Loading analytics...</p>
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-default-500">Loading stats...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="stats-view">
-      {currentIntent && (
-        <section className="intent-section">
-          <h2>Current Intent</h2>
-          <div className="intent-card">
-            <div className="intent-icon">
-              {getIntentEmoji(currentIntent.type)}
-            </div>
-            <div className="intent-content">
-              <div className="intent-type">{currentIntent.type}</div>
-              <div className="intent-description">
-                {currentIntent.description}
-              </div>
-              <div className="intent-meta">
-                <span>Focus: {currentIntent.focus}</span>
-                <span>
-                  Confidence: {Math.round(currentIntent.confidence * 100)}%
-                </span>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Your Stats 📊</h1>
+        <Chip
+          color={streak > 0 ? "success" : "default"}
+          variant="flat"
+          size="lg"
+        >
+          🔥 {streak} day streak
+        </Chip>
+      </div>
 
-      {weeklyStats && (
-        <section className="weekly-stats">
-          <h2>This Week</h2>
+      {/* Streak Message */}
+      <Card>
+        <CardBody className="text-center py-4">
+          <p className="text-lg font-medium">{getStreakMessage(streak)}</p>
+        </CardBody>
+      </Card>
 
-          <div className="stats-grid">
-            <div className="stat-card">
-              <span className="stat-label">Total Time</span>
-              <span className="stat-value">
-                {formatDuration(weeklyStats.totalTime)}
-              </span>
-            </div>
-            <div className="stat-card">
-              <span className="stat-label">Sites Visited</span>
-              <span className="stat-value">{weeklyStats.totalSites}</span>
-            </div>
-            <div className="stat-card">
-              <span className="stat-label">Avg Session</span>
-              <span className="stat-value">
-                {formatDuration(weeklyStats.avgSessionLength)}
-              </span>
-            </div>
-            <div className="stat-card">
-              <span className="stat-label">Top Category</span>
-              <span className="stat-value">{weeklyStats.topCategory}</span>
-            </div>
-          </div>
+      {/* Period Tabs */}
+      <Tabs
+        selectedKey={selectedPeriod}
+        onSelectionChange={(key) => setSelectedPeriod(key as any)}
+        aria-label="Stats period"
+        color="primary"
+        variant="bordered"
+        fullWidth
+      >
+        <Tab key="today" title="Today" />
+        <Tab key="week" title="This Week" />
+        <Tab key="month" title="This Month" />
+      </Tabs>
 
-          <div className="category-breakdown">
-            <h3>Time Distribution</h3>
-            {weeklyStats.categoryBreakdown.map((item: any) => (
-              <div key={item.category} className="breakdown-item">
-                <div className="breakdown-header">
-                  <span className="breakdown-name">{item.category}</span>
-                  <span className="breakdown-value">
-                    {formatDuration(item.time)} ({Math.round(item.percentage)}%)
+      {/* Today's Stats */}
+      {selectedPeriod === "today" && todayStats && (
+        <div className="space-y-4">
+          {/* Productivity Score */}
+          <Card>
+            <CardHeader>
+              <h3 className="text-lg font-semibold">Productivity Score</h3>
+            </CardHeader>
+            <CardBody>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-4xl font-bold">
+                    {todayStats.productivityScore}
                   </span>
+                  <span className="text-sm text-default-500">/ 100</span>
                 </div>
-                <div className="breakdown-bar">
-                  <div
-                    className="breakdown-fill"
-                    style={{
-                      width: `${item.percentage}%`,
-                      backgroundColor: getCategoryColor(item.category),
-                    }}
+                <Progress
+                  value={todayStats.productivityScore}
+                  color={getScoreColor(todayStats.productivityScore)}
+                  size="lg"
+                  className="max-w-full"
+                />
+                <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                  <div>
+                    <p className="text-default-500">Focus</p>
+                    <p className="font-semibold text-success">
+                      {formatTime(todayStats.focusTimeMs)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-default-500">Neutral</p>
+                    <p className="font-semibold">
+                      {formatTime(todayStats.neutralTimeMs)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-default-500">Distraction</p>
+                    <p className="font-semibold text-danger">
+                      {formatTime(todayStats.distractionTimeMs)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardBody>
+          </Card>
+
+          {/* Time Distribution */}
+          <Card>
+            <CardHeader>
+              <h3 className="text-lg font-semibold">Time Distribution</h3>
+            </CardHeader>
+            <CardBody>
+              <div className="space-y-3">
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-sm">Productive</span>
+                    <span className="text-sm font-medium">
+                      {formatTime(todayStats.focusTimeMs)}
+                    </span>
+                  </div>
+                  <Progress
+                    value={calculatePercentage(
+                      todayStats.focusTimeMs,
+                      getTotalTime(todayStats)
+                    )}
+                    color="success"
+                    size="sm"
+                  />
+                </div>
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-sm">Neutral</span>
+                    <span className="text-sm font-medium">
+                      {formatTime(todayStats.neutralTimeMs)}
+                    </span>
+                  </div>
+                  <Progress
+                    value={calculatePercentage(
+                      todayStats.neutralTimeMs,
+                      getTotalTime(todayStats)
+                    )}
+                    color="default"
+                    size="sm"
+                  />
+                </div>
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-sm">Distraction</span>
+                    <span className="text-sm font-medium">
+                      {formatTime(todayStats.distractionTimeMs)}
+                    </span>
+                  </div>
+                  <Progress
+                    value={calculatePercentage(
+                      todayStats.distractionTimeMs,
+                      getTotalTime(todayStats)
+                    )}
+                    color="danger"
+                    size="sm"
                   />
                 </div>
               </div>
-            ))}
-          </div>
-        </section>
-      )}
+            </CardBody>
+          </Card>
 
-      {topicsOverTime.length > 0 && (
-        <section className="topics-section">
-          <h2>Topics Over Time</h2>
-          <div className="topics-timeline">
-            {topicsOverTime.map(({ date, topics }) => (
-              <div key={date} className="topic-day">
-                <div className="topic-date">{date}</div>
-                <div className="topic-tags">
-                  {topics.map((topic, idx) => (
-                    <span key={idx} className="topic-tag">
-                      {topic}
-                    </span>
-                  ))}
+          {/* Interventions */}
+          <Card>
+            <CardHeader>
+              <h3 className="text-lg font-semibold">Interventions</h3>
+            </CardHeader>
+            <CardBody>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center p-3 bg-default-100 rounded-lg">
+                  <p className="text-2xl font-bold">
+                    {todayStats.interventionsTriggered}
+                  </p>
+                  <p className="text-sm text-default-500">Triggered</p>
+                </div>
+                <div className="text-center p-3 bg-success-100 rounded-lg">
+                  <p className="text-2xl font-bold text-success">
+                    {todayStats.interventionsAccepted}
+                  </p>
+                  <p className="text-sm text-default-500">Accepted</p>
+                </div>
+                <div className="text-center p-3 bg-warning-100 rounded-lg">
+                  <p className="text-2xl font-bold text-warning">
+                    {todayStats.interventionsSnoozed}
+                  </p>
+                  <p className="text-sm text-default-500">Snoozed</p>
+                </div>
+                <div className="text-center p-3 bg-danger-100 rounded-lg">
+                  <p className="text-2xl font-bold text-danger">
+                    {todayStats.interventionsDismissed}
+                  </p>
+                  <p className="text-sm text-default-500">Dismissed</p>
                 </div>
               </div>
-            ))}
-          </div>
-        </section>
+              {todayStats.interventionsTriggered > 0 && (
+                <div className="mt-4 text-center">
+                  <p className="text-sm text-default-500">
+                    Acceptance Rate:{" "}
+                    <span className="font-semibold">
+                      {Math.round(
+                        (todayStats.interventionsAccepted /
+                          todayStats.interventionsTriggered) *
+                          100
+                      )}
+                      %
+                    </span>
+                  </p>
+                </div>
+              )}
+            </CardBody>
+          </Card>
+
+          {/* Top Distractions */}
+          {todayStats.topDistractions.length > 0 && (
+            <Card>
+              <CardHeader>
+                <h3 className="text-lg font-semibold">Top Distractions</h3>
+              </CardHeader>
+              <CardBody>
+                <div className="space-y-2">
+                  {todayStats.topDistractions.slice(0, 5).map((site, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-2 bg-default-50 rounded"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {site.title || "Unknown"}
+                        </p>
+                        <p className="text-xs text-default-400 truncate">
+                          {site.url}
+                        </p>
+                      </div>
+                      <div className="ml-2 text-right">
+                        <p className="text-sm font-semibold text-danger">
+                          {formatTime(site.timeMs)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardBody>
+            </Card>
+          )}
+
+          {/* Top Focus Sites */}
+          {todayStats.topFocusSites.length > 0 && (
+            <Card>
+              <CardHeader>
+                <h3 className="text-lg font-semibold">Top Productive Sites</h3>
+              </CardHeader>
+              <CardBody>
+                <div className="space-y-2">
+                  {todayStats.topFocusSites.slice(0, 5).map((site, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-2 bg-default-50 rounded"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {site.title || "Unknown"}
+                        </p>
+                        <p className="text-xs text-default-400 truncate">
+                          {site.url}
+                        </p>
+                      </div>
+                      <div className="ml-2 text-right">
+                        <p className="text-sm font-semibold text-success">
+                          {formatTime(site.timeMs)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardBody>
+            </Card>
+          )}
+        </div>
       )}
 
-      {insights.length > 0 && (
-        <section className="insights-section">
-          <h2>💡 Personalized Insights</h2>
-          <div className="insights-list">
-            {insights.map((insight, idx) => (
-              <div key={idx} className="insight-card">
-                <div className="insight-number">{idx + 1}</div>
-                <div className="insight-text">{insight}</div>
+      {/* Weekly Stats */}
+      {selectedPeriod === "week" && weekStats && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <h3 className="text-lg font-semibold">Weekly Overview</h3>
+            </CardHeader>
+            <CardBody>
+              <div className="space-y-4">
+                <div className="text-center">
+                  <p className="text-4xl font-bold">
+                    {Math.round(weekStats.averageProductivityScore)}
+                  </p>
+                  <p className="text-sm text-default-500">
+                    Average Productivity Score
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-success">
+                      {formatTime(weekStats.totalFocusTimeMs)}
+                    </p>
+                    <p className="text-sm text-default-500">Focus Time</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-danger">
+                      {formatTime(weekStats.totalDistractionTimeMs)}
+                    </p>
+                    <p className="text-sm text-default-500">Distraction Time</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+                  <div>
+                    <p className="text-sm text-default-500 mb-1">Best Day</p>
+                    <Chip color="success" variant="flat">
+                      {new Date(weekStats.bestDay.date).toLocaleDateString(
+                        "en-US",
+                        { weekday: "short" }
+                      )}{" "}
+                      - {weekStats.bestDay.score}
+                    </Chip>
+                  </div>
+                  <div>
+                    <p className="text-sm text-default-500 mb-1">Needs Work</p>
+                    <Chip color="warning" variant="flat">
+                      {new Date(weekStats.worstDay.date).toLocaleDateString(
+                        "en-US",
+                        { weekday: "short" }
+                      )}{" "}
+                      - {weekStats.worstDay.score}
+                    </Chip>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t text-center">
+                  <p className="text-sm text-default-500">
+                    Intervention Acceptance Rate:{" "}
+                    <span className="font-semibold">
+                      {Math.round(weekStats.interventionAcceptanceRate * 100)}%
+                    </span>
+                  </p>
+                </div>
               </div>
-            ))}
-          </div>
-        </section>
+            </CardBody>
+          </Card>
+        </div>
       )}
 
-      <button onClick={loadStats} className="refresh-button">
-        🔄 Refresh Stats
-      </button>
+      {/* Export Stats */}
+      <Card className="bg-default-50">
+        <CardBody className="py-3">
+          <button
+            onClick={async () => {
+              const data = await statsDB.exportStats();
+              const blob = new Blob([data], { type: "application/json" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `morpheus-stats-${
+                new Date().toISOString().split("T")[0]
+              }.json`;
+              a.click();
+            }}
+            className="text-sm text-primary hover:underline"
+          >
+            📥 Export Stats as JSON
+          </button>
+        </CardBody>
+      </Card>
     </div>
   );
 };
+
+// Helper functions
+function getTotalTime(stats: DailyStats): number {
+  return stats.focusTimeMs + stats.neutralTimeMs + stats.distractionTimeMs;
+}
+
+function calculatePercentage(value: number, total: number): number {
+  if (total === 0) return 0;
+  return Math.round((value / total) * 100);
+}
+
+export default StatsView;
