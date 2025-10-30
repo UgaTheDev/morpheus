@@ -446,7 +446,6 @@ export class StatsDatabase {
    * Get current streak
    */
   async getCurrentStreak(): Promise<number> {
-    const today = this.formatDate(new Date());
     let streak = 0;
     let currentDate = new Date();
 

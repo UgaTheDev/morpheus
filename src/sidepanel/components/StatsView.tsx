@@ -1,10 +1,13 @@
-// sidepanel/components/StatsView.tsx
+// src/sidepanel/components/StatsView.tsx
+// Using Hero UI components
+
 import React, { useState, useEffect } from "react";
-import { Card, CardBody, CardHeader } from "@heroui/card";
-import { Tabs, Tab } from "@heroui/tabs";
-import { Progress } from "@heroui/progress";
-import { Chip } from "@heroui/chip";
-import { statsDB, DailyStats, WeeklyStats } from "../../lib/stats-db";
+import { Card, CardHeader, CardBody } from "@heroui/react";
+import { Tabs, Tab } from "@heroui/react";
+import { Progress } from "@heroui/react";
+import { Chip } from "@heroui/react";
+import { Button } from "@heroui/react";
+import { statsDB, type DailyStats, type WeeklyStats } from "../../lib/stats-db";
 
 interface StatsViewProps {}
 
@@ -19,8 +22,6 @@ export const StatsView: React.FC<StatsViewProps> = () => {
 
   useEffect(() => {
     loadStats();
-
-    // Refresh every minute
     const interval = setInterval(loadStats, 60000);
     return () => clearInterval(interval);
   }, [selectedPeriod]);
@@ -28,21 +29,28 @@ export const StatsView: React.FC<StatsViewProps> = () => {
   const loadStats = async () => {
     setLoading(true);
     try {
-      // Today's stats
-      const today = new Date().toISOString().split("T")[0];
-      const dailyStats = await statsDB.getDailyStatsForDate(today);
-      setTodayStats(dailyStats);
+      // Get today's stats from background
+      const statsResponse = await chrome.runtime.sendMessage({
+        type: "GET_STATS",
+      });
+      if (statsResponse?.success) {
+        setTodayStats(statsResponse.stats);
+      }
 
-      // Week stats
+      // Get streak
+      const streakResponse = await chrome.runtime.sendMessage({
+        type: "GET_STREAK",
+      });
+      if (streakResponse?.success) {
+        setStreak(streakResponse.streak);
+      }
+
+      // Get weekly stats if needed
       if (selectedPeriod === "week" || selectedPeriod === "month") {
         const weekStart = getWeekStart(new Date());
         const weekly = await statsDB.calculateWeeklyStats(weekStart);
         setWeekStats(weekly);
       }
-
-      // Current streak
-      const currentStreak = await statsDB.getCurrentStreak();
-      setStreak(currentStreak);
     } catch (error) {
       console.error("Error loading stats:", error);
     } finally {
@@ -53,7 +61,7 @@ export const StatsView: React.FC<StatsViewProps> = () => {
   const getWeekStart = (date: Date): string => {
     const d = new Date(date);
     const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust for Monday start
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
     d.setDate(diff);
     return d.toISOString().split("T")[0];
   };
@@ -61,14 +69,13 @@ export const StatsView: React.FC<StatsViewProps> = () => {
   const formatTime = (ms: number): string => {
     const hours = Math.floor(ms / 3600000);
     const minutes = Math.floor((ms % 3600000) / 60000);
-
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`;
-    }
+    if (hours > 0) return `${hours}h ${minutes}m`;
     return `${minutes}m`;
   };
 
-  const getScoreColor = (score: number): "success" | "warning" | "danger" => {
+  const getScoreColor = (
+    score: number
+  ): "success" | "warning" | "danger" | "default" => {
     if (score >= 70) return "success";
     if (score >= 40) return "warning";
     return "danger";
@@ -82,24 +89,50 @@ export const StatsView: React.FC<StatsViewProps> = () => {
     return `${streak} days! Incredible! 🌟🔥`;
   };
 
+  const calculatePercentage = (value: number, total: number): number => {
+    if (total === 0) return 0;
+    return Math.round((value / total) * 100);
+  };
+
+  const getTotalTime = (stats: DailyStats): number => {
+    return stats.focusTimeMs + stats.neutralTimeMs + stats.distractionTimeMs;
+  };
+
+  const exportStats = async () => {
+    try {
+      const data = await statsDB.exportStats();
+      const blob = new Blob([data], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `morpheus-stats-${
+        new Date().toISOString().split("T")[0]
+      }.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Failed to export stats:", error);
+    }
+  };
+
   if (loading && !todayStats) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-default-500">Loading stats...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-morpheus-blue mx-auto mb-4"></div>
+          <p className="text-gray-500">Loading stats...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Your Stats 📊</h1>
         <Chip
-          color={streak > 0 ? "success" : "default"}
+          color={streak > 0 ? "warning" : "default"}
           variant="flat"
           size="lg"
         >
@@ -120,7 +153,7 @@ export const StatsView: React.FC<StatsViewProps> = () => {
         onSelectionChange={(key) => setSelectedPeriod(key as any)}
         aria-label="Stats period"
         color="primary"
-        variant="bordered"
+        variant="underlined"
         fullWidth
       >
         <Tab key="today" title="Today" />
@@ -130,7 +163,7 @@ export const StatsView: React.FC<StatsViewProps> = () => {
 
       {/* Today's Stats */}
       {selectedPeriod === "today" && todayStats && (
-        <div className="space-y-4">
+        <div className="space-y-4 animate-slide-up">
           {/* Productivity Score */}
           <Card>
             <CardHeader>
@@ -142,7 +175,7 @@ export const StatsView: React.FC<StatsViewProps> = () => {
                   <span className="text-4xl font-bold">
                     {todayStats.productivityScore}
                   </span>
-                  <span className="text-sm text-default-500">/ 100</span>
+                  <span className="text-sm text-gray-500">/ 100</span>
                 </div>
                 <Progress
                   value={todayStats.productivityScore}
@@ -152,20 +185,20 @@ export const StatsView: React.FC<StatsViewProps> = () => {
                 />
                 <div className="grid grid-cols-3 gap-2 text-center text-sm">
                   <div>
-                    <p className="text-default-500">Focus</p>
-                    <p className="font-semibold text-success">
+                    <p className="text-gray-500">Focus</p>
+                    <p className="font-semibold text-green-600">
                       {formatTime(todayStats.focusTimeMs)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-default-500">Neutral</p>
+                    <p className="text-gray-500">Neutral</p>
                     <p className="font-semibold">
                       {formatTime(todayStats.neutralTimeMs)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-default-500">Distraction</p>
-                    <p className="font-semibold text-danger">
+                    <p className="text-gray-500">Distraction</p>
+                    <p className="font-semibold text-red-600">
                       {formatTime(todayStats.distractionTimeMs)}
                     </p>
                   </div>
@@ -240,34 +273,34 @@ export const StatsView: React.FC<StatsViewProps> = () => {
             </CardHeader>
             <CardBody>
               <div className="grid grid-cols-2 gap-4">
-                <div className="text-center p-3 bg-default-100 rounded-lg">
+                <div className="text-center p-3 bg-gray-100 rounded-lg">
                   <p className="text-2xl font-bold">
                     {todayStats.interventionsTriggered}
                   </p>
-                  <p className="text-sm text-default-500">Triggered</p>
+                  <p className="text-sm text-gray-500">Triggered</p>
                 </div>
-                <div className="text-center p-3 bg-success-100 rounded-lg">
-                  <p className="text-2xl font-bold text-success">
+                <div className="text-center p-3 bg-green-100 rounded-lg">
+                  <p className="text-2xl font-bold text-green-600">
                     {todayStats.interventionsAccepted}
                   </p>
-                  <p className="text-sm text-default-500">Accepted</p>
+                  <p className="text-sm text-gray-500">Accepted</p>
                 </div>
-                <div className="text-center p-3 bg-warning-100 rounded-lg">
-                  <p className="text-2xl font-bold text-warning">
+                <div className="text-center p-3 bg-yellow-100 rounded-lg">
+                  <p className="text-2xl font-bold text-yellow-600">
                     {todayStats.interventionsSnoozed}
                   </p>
-                  <p className="text-sm text-default-500">Snoozed</p>
+                  <p className="text-sm text-gray-500">Snoozed</p>
                 </div>
-                <div className="text-center p-3 bg-danger-100 rounded-lg">
-                  <p className="text-2xl font-bold text-danger">
+                <div className="text-center p-3 bg-red-100 rounded-lg">
+                  <p className="text-2xl font-bold text-red-600">
                     {todayStats.interventionsDismissed}
                   </p>
-                  <p className="text-sm text-default-500">Dismissed</p>
+                  <p className="text-sm text-gray-500">Dismissed</p>
                 </div>
               </div>
               {todayStats.interventionsTriggered > 0 && (
                 <div className="mt-4 text-center">
-                  <p className="text-sm text-default-500">
+                  <p className="text-sm text-gray-500">
                     Acceptance Rate:{" "}
                     <span className="font-semibold">
                       {Math.round(
@@ -294,18 +327,18 @@ export const StatsView: React.FC<StatsViewProps> = () => {
                   {todayStats.topDistractions.slice(0, 5).map((site, index) => (
                     <div
                       key={index}
-                      className="flex items-center justify-between p-2 bg-default-50 rounded"
+                      className="flex items-center justify-between p-2 bg-red-50 rounded border border-red-200"
                     >
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">
                           {site.title || "Unknown"}
                         </p>
-                        <p className="text-xs text-default-400 truncate">
+                        <p className="text-xs text-gray-400 truncate">
                           {site.url}
                         </p>
                       </div>
                       <div className="ml-2 text-right">
-                        <p className="text-sm font-semibold text-danger">
+                        <p className="text-sm font-semibold text-red-600">
                           {formatTime(site.timeMs)}
                         </p>
                       </div>
@@ -327,18 +360,18 @@ export const StatsView: React.FC<StatsViewProps> = () => {
                   {todayStats.topFocusSites.slice(0, 5).map((site, index) => (
                     <div
                       key={index}
-                      className="flex items-center justify-between p-2 bg-default-50 rounded"
+                      className="flex items-center justify-between p-2 bg-green-50 rounded border border-green-200"
                     >
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">
                           {site.title || "Unknown"}
                         </p>
-                        <p className="text-xs text-default-400 truncate">
+                        <p className="text-xs text-gray-400 truncate">
                           {site.url}
                         </p>
                       </div>
                       <div className="ml-2 text-right">
-                        <p className="text-sm font-semibold text-success">
+                        <p className="text-sm font-semibold text-green-600">
                           {formatTime(site.timeMs)}
                         </p>
                       </div>
@@ -353,7 +386,7 @@ export const StatsView: React.FC<StatsViewProps> = () => {
 
       {/* Weekly Stats */}
       {selectedPeriod === "week" && weekStats && (
-        <div className="space-y-4">
+        <div className="space-y-4 animate-slide-up">
           <Card>
             <CardHeader>
               <h3 className="text-lg font-semibold">Weekly Overview</h3>
@@ -364,29 +397,29 @@ export const StatsView: React.FC<StatsViewProps> = () => {
                   <p className="text-4xl font-bold">
                     {Math.round(weekStats.averageProductivityScore)}
                   </p>
-                  <p className="text-sm text-default-500">
+                  <p className="text-sm text-gray-500">
                     Average Productivity Score
                   </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 pt-4 border-t">
                   <div className="text-center">
-                    <p className="text-2xl font-bold text-success">
+                    <p className="text-2xl font-bold text-green-600">
                       {formatTime(weekStats.totalFocusTimeMs)}
                     </p>
-                    <p className="text-sm text-default-500">Focus Time</p>
+                    <p className="text-sm text-gray-500">Focus Time</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-2xl font-bold text-danger">
+                    <p className="text-2xl font-bold text-red-600">
                       {formatTime(weekStats.totalDistractionTimeMs)}
                     </p>
-                    <p className="text-sm text-default-500">Distraction Time</p>
+                    <p className="text-sm text-gray-500">Distraction Time</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 pt-4 border-t">
                   <div>
-                    <p className="text-sm text-default-500 mb-1">Best Day</p>
+                    <p className="text-sm text-gray-500 mb-1">Best Day</p>
                     <Chip color="success" variant="flat">
                       {new Date(weekStats.bestDay.date).toLocaleDateString(
                         "en-US",
@@ -396,7 +429,7 @@ export const StatsView: React.FC<StatsViewProps> = () => {
                     </Chip>
                   </div>
                   <div>
-                    <p className="text-sm text-default-500 mb-1">Needs Work</p>
+                    <p className="text-sm text-gray-500 mb-1">Needs Work</p>
                     <Chip color="warning" variant="flat">
                       {new Date(weekStats.worstDay.date).toLocaleDateString(
                         "en-US",
@@ -408,7 +441,7 @@ export const StatsView: React.FC<StatsViewProps> = () => {
                 </div>
 
                 <div className="pt-4 border-t text-center">
-                  <p className="text-sm text-default-500">
+                  <p className="text-sm text-gray-500">
                     Intervention Acceptance Rate:{" "}
                     <span className="font-semibold">
                       {Math.round(weekStats.interventionAcceptanceRate * 100)}%
@@ -422,38 +455,20 @@ export const StatsView: React.FC<StatsViewProps> = () => {
       )}
 
       {/* Export Stats */}
-      <Card className="bg-default-50">
+      <Card className="bg-gray-50">
         <CardBody className="py-3">
-          <button
-            onClick={async () => {
-              const data = await statsDB.exportStats();
-              const blob = new Blob([data], { type: "application/json" });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `morpheus-stats-${
-                new Date().toISOString().split("T")[0]
-              }.json`;
-              a.click();
-            }}
-            className="text-sm text-primary hover:underline"
+          <Button
+            onPress={exportStats}
+            color="primary"
+            variant="light"
+            fullWidth
           >
             📥 Export Stats as JSON
-          </button>
+          </Button>
         </CardBody>
       </Card>
     </div>
   );
 };
-
-// Helper functions
-function getTotalTime(stats: DailyStats): number {
-  return stats.focusTimeMs + stats.neutralTimeMs + stats.distractionTimeMs;
-}
-
-function calculatePercentage(value: number, total: number): number {
-  if (total === 0) return 0;
-  return Math.round((value / total) * 100);
-}
 
 export default StatsView;
