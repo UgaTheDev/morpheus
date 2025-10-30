@@ -4,6 +4,10 @@
 import { statsDB } from "../lib/stats-db";
 import { getChromeAI } from "../lib/chrome-ai-client";
 
+setInterval(() => {
+  console.log("⏰ Keepalive:", new Date().toLocaleTimeString());
+}, 20000);
+
 const chromeAI = getChromeAI();
 
 // Initialize on install
