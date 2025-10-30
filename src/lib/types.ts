@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 // Core browsing pattern type
 export interface BrowsingPattern {
   id: string;
@@ -226,6 +228,7 @@ export interface UserState {
 export type Priority = "low" | "medium" | "high" | "critical";
 
 export interface Action {
+  label?: ReactNode;
   type: "open_url" | "show_overlay" | "block_site" | "start_timer";
   payload: any;
 }

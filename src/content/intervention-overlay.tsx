@@ -83,28 +83,26 @@ export const InterventionOverlay: React.FC<InterventionOverlayProps> = ({
           </p>
         </div>
 
-        {true && ( // was: {intervention.dismissible && (
-          <button
-            onClick={handleDismiss}
-            className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
-            aria-label="Dismiss"
-          >
-            <X className="w-4 h-4 text-gray-400" />
-          </button>
-        )}
+        <button
+          onClick={handleDismiss}
+          className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+          aria-label="Dismiss"
+        >
+          <X className="w-4 h-4 text-gray-400" />
+        </button>
       </div>
 
       {/* Actions */}
-      <div className="px-4 pb-4 flex flex-wrap gap-2">
-        {intervention.action && (
+      {intervention.action && (
+        <div className="px-4 pb-4 flex flex-wrap gap-2">
           <button
             onClick={() => handleAction(intervention.action!)}
-            className="..."
+            className="flex-1 bg-blue-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-600 transition-colors"
           >
-            {intervention.action.type === "open_url" ? "Open" : "Take Action"}
+            {intervention.action.label}
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Subtle branding */}
       <div className="px-4 pb-3 text-xs text-gray-400 flex items-center gap-1">
@@ -120,25 +118,57 @@ export const InterventionWrapper: React.FC = () => {
   const [intervention, setIntervention] = useState<Intervention | null>(null);
 
   useEffect(() => {
+    console.log("🎨 InterventionWrapper mounted");
+
     // Listen for intervention messages from background script
-    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    const handleMessage = (
+      message: any,
+      _sender: chrome.runtime.MessageSender,
+      sendResponse: (response?: any) => void
+    ) => {
+      console.log("📨 InterventionWrapper received message:", message.type);
+
       if (message.type === "SHOW_INTERVENTION") {
+        console.log("🎯 Showing intervention:", message.data);
         setIntervention(message.data);
-        sendResponse({ received: true });
+        sendResponse({ received: true, success: true });
+        return true;
       }
-      return true;
-    });
+
+      return false;
+    };
+
+    chrome.runtime.onMessage.addListener(handleMessage);
+
+    // Cleanup
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleMessage);
+    };
   }, []);
 
   const handleAction = (action: Action) => {
     if (!intervention) return;
 
+    console.log("🎬 Intervention action taken:", action.type);
+
     // Send action to background script
-    chrome.runtime.sendMessage({
-      type: "INTERVENTION_ACTION",
-      interventionId: intervention.id,
-      action,
-    });
+    try {
+      chrome.runtime.sendMessage({
+        type: "INTERVENTION_RESPONSE",
+        interventionId: intervention.id,
+        outcome: action.type,
+        action,
+        site: window.location.href,
+        interventionMessage: intervention.message,
+      });
+    } catch (error) {
+      console.error("Failed to send intervention response:", error);
+    }
+
+    // Handle specific actions (allow for actions not declared in the Action union)
+    if ((action as any).type === "close_tab") {
+      window.close();
+    }
 
     setIntervention(null);
   };
@@ -146,17 +176,31 @@ export const InterventionWrapper: React.FC = () => {
   const handleDismiss = () => {
     if (!intervention) return;
 
+    console.log("❌ Intervention dismissed");
+
     // Mark as dismissed
-    chrome.runtime.sendMessage({
-      type: "INTERVENTION_ACTION",
-      interventionId: intervention.id,
-      action: { type: "dismiss", label: "Dismissed" },
-    });
+    try {
+      chrome.runtime.sendMessage({
+        type: "INTERVENTION_RESPONSE",
+        interventionId: intervention.id,
+        outcome: "dismissed",
+        action: { type: "dismiss", label: "Dismissed" },
+        site: window.location.href,
+        interventionMessage: intervention.message,
+      });
+    } catch (error) {
+      console.error("Failed to send dismissal:", error);
+    }
 
     setIntervention(null);
   };
 
-  if (!intervention) return null;
+  if (!intervention) {
+    console.log("💤 No intervention to display");
+    return null;
+  }
+
+  console.log("🎨 Rendering intervention:", intervention.title);
 
   return (
     <InterventionOverlay
