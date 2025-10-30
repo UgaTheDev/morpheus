@@ -387,8 +387,12 @@ console.log("🎯 Morpheus service worker loaded");
 // Export for other files if needed
 export {};
 
-// Expose for console testing (dev only)
-if (import.meta.env.DEV) {
-  (globalThis as any).statsDB = statsDB;
-  console.log("🧪 statsDB exposed to console for testing");
+declare global {
+  interface Window {
+    statsDB: typeof statsDB;
+  }
 }
+
+// Expose statsDB to global scope for console testing
+(self as any).statsDB = statsDB;
+console.log("🧪 statsDB exposed to console");
