@@ -1,5 +1,8 @@
+// src/content/intervention-overlay-premium.tsx
+// Beautiful intervention overlay with glassmorphism
+
 import React, { useState, useEffect } from "react";
-import { X, Brain, Sparkles } from "lucide-react";
+import { X, Brain, Sparkles, Zap, Clock, Target } from "lucide-react";
 import type { Intervention, Action } from "../lib/types";
 
 interface InterventionOverlayProps {
@@ -17,45 +20,54 @@ export const InterventionOverlay: React.FC<InterventionOverlayProps> = ({
   const [isExiting, setIsExiting] = useState(false);
 
   useEffect(() => {
-    // Animate in
     setTimeout(() => setIsVisible(true), 100);
   }, []);
 
   const handleDismiss = () => {
     setIsExiting(true);
-    setTimeout(() => {
-      onDismiss();
-    }, 300);
+    setTimeout(() => onDismiss(), 300);
   };
 
   const handleAction = (action: Action) => {
     setIsExiting(true);
-    setTimeout(() => {
-      onAction(action);
-    }, 300);
+    setTimeout(() => onAction(action), 300);
   };
 
-  const Icon = Brain;
-
-  // Priority to color mapping
-  const priorityColors = {
-    low: "bg-blue-500",
-    medium: "bg-yellow-500",
-    high: "bg-orange-500",
-    critical: "bg-red-500",
+  const priorityConfig = {
+    low: {
+      gradient: "from-blue-500 to-blue-600",
+      icon: Brain,
+      glow: "shadow-blue-500/50",
+    },
+    medium: {
+      gradient: "from-yellow-500 to-orange-500",
+      icon: Zap,
+      glow: "shadow-orange-500/50",
+    },
+    high: {
+      gradient: "from-orange-500 to-red-500",
+      icon: Target,
+      glow: "shadow-red-500/50",
+    },
+    critical: {
+      gradient: "from-red-500 to-pink-600",
+      icon: Target,
+      glow: "shadow-red-500/50",
+    },
   };
 
-  const priorityColor = priorityColors[intervention.priority];
+  const config = priorityConfig[intervention.priority];
+  const Icon = config.icon;
 
   return (
     <div
       className={`
-        fixed bottom-6 right-6 w-96 bg-white rounded-xl shadow-2xl border border-gray-200
-        transition-all duration-300 ease-out z-[999999]
+        fixed bottom-8 right-8 w-[420px] z-[999999]
+        transition-all duration-500 ease-out
         ${
           isVisible && !isExiting
-            ? "translate-y-0 opacity-100"
-            : "translate-y-4 opacity-0"
+            ? "translate-y-0 opacity-100 scale-100"
+            : "translate-y-8 opacity-0 scale-95"
         }
       `}
       style={{
@@ -63,73 +75,97 @@ export const InterventionOverlay: React.FC<InterventionOverlayProps> = ({
           '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
       }}
     >
-      {/* Priority indicator bar */}
-      <div className={`h-1 ${priorityColor} rounded-t-xl`} />
+      {/* Glow Effect */}
+      <div
+        className={`absolute inset-0 rounded-3xl bg-gradient-to-r ${config.gradient} blur-2xl opacity-30 ${config.glow}`}
+      ></div>
 
-      {/* Header */}
-      <div className="p-4 flex items-start gap-3">
-        <div className={`p-2 ${priorityColor} bg-opacity-10 rounded-lg`}>
-          <Icon
-            className={`w-5 h-5 ${priorityColor.replace("bg-", "text-")}`}
-          />
+      {/* Main Card */}
+      <div className="relative bg-white/90 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden">
+        {/* Animated Background Pattern */}
+        <div className="absolute inset-0 opacity-5">
+          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-purple-500 to-pink-500"></div>
         </div>
 
-        <div className="flex-1">
-          <h3 className="font-semibold text-gray-900 text-base">
-            {intervention.title}
-          </h3>
-          <p className="text-gray-600 text-sm mt-1 leading-relaxed">
-            {intervention.message}
-          </p>
+        {/* Top Gradient Bar */}
+        <div className={`h-2 bg-gradient-to-r ${config.gradient}`}></div>
+
+        {/* Header */}
+        <div className="relative p-6 pb-4">
+          <div className="flex items-start gap-4">
+            {/* Icon */}
+            <div
+              className={`p-3 rounded-2xl bg-gradient-to-r ${config.gradient} shadow-lg ${config.glow}`}
+            >
+              <Icon className="w-7 h-7 text-white" />
+            </div>
+
+            {/* Content */}
+            <div className="flex-1">
+              <h3 className="text-xl font-bold text-gray-900 mb-2 flex items-center gap-2">
+                {intervention.title}
+                <Sparkles className="w-4 h-4 text-yellow-500" />
+              </h3>
+              <p className="text-gray-700 leading-relaxed">
+                {intervention.message}
+              </p>
+            </div>
+
+            {/* Close Button */}
+            <button
+              onClick={handleDismiss}
+              className="flex-shrink-0 p-2 hover:bg-gray-100 rounded-xl transition-all duration-200 group"
+              aria-label="Dismiss"
+            >
+              <X className="w-5 h-5 text-gray-400 group-hover:text-gray-600 transition-colors" />
+            </button>
+          </div>
         </div>
 
-        <button
-          onClick={handleDismiss}
-          className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
-          aria-label="Dismiss"
-        >
-          <X className="w-4 h-4 text-gray-400" />
-        </button>
-      </div>
+        {/* Actions */}
+        {intervention.action && (
+          <div className="relative px-6 pb-6">
+            <button
+              onClick={() => handleAction(intervention.action!)}
+              className={`w-full py-4 rounded-2xl font-semibold text-white bg-gradient-to-r ${config.gradient} shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]`}
+            >
+              {intervention.action.label || "Take Action"}
+            </button>
+          </div>
+        )}
 
-      {/* Actions */}
-      {intervention.action && (
-        <div className="px-4 pb-4 flex flex-wrap gap-2">
-          <button
-            onClick={() => handleAction(intervention.action!)}
-            className="flex-1 bg-blue-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-600 transition-colors"
-          >
-            {intervention.action.label}
-          </button>
+        {/* Footer */}
+        <div className="relative px-6 pb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs text-gray-400">
+            <Brain className="w-3.5 h-3.5" />
+            <span className="font-medium">Morpheus AI</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-gray-400">
+            <Clock className="w-3.5 h-3.5" />
+            <span>Just now</span>
+          </div>
         </div>
-      )}
-
-      {/* Subtle branding */}
-      <div className="px-4 pb-3 text-xs text-gray-400 flex items-center gap-1">
-        <Sparkles className="w-3 h-3" />
-        <span>Morpheus AI</span>
       </div>
     </div>
   );
 };
 
-// Wrapper component for the overlay
+// Wrapper component
 export const InterventionWrapper: React.FC = () => {
   const [intervention, setIntervention] = useState<Intervention | null>(null);
 
   useEffect(() => {
-    console.log("🎨 InterventionWrapper mounted");
+    console.log("🎨 Premium InterventionWrapper mounted");
 
-    // Listen for intervention messages from background script
     const handleMessage = (
       message: any,
       _sender: chrome.runtime.MessageSender,
       sendResponse: (response?: any) => void
     ) => {
-      console.log("📨 InterventionWrapper received message:", message.type);
+      console.log("📨 Premium intervention received:", message.type);
 
       if (message.type === "SHOW_INTERVENTION") {
-        console.log("🎯 Showing intervention:", message.data);
+        console.log("🎯 Showing premium intervention:", message.data);
         setIntervention(message.data);
         sendResponse({ received: true, success: true });
         return true;
@@ -139,19 +175,14 @@ export const InterventionWrapper: React.FC = () => {
     };
 
     chrome.runtime.onMessage.addListener(handleMessage);
-
-    // Cleanup
-    return () => {
-      chrome.runtime.onMessage.removeListener(handleMessage);
-    };
+    return () => chrome.runtime.onMessage.removeListener(handleMessage);
   }, []);
 
   const handleAction = (action: Action) => {
     if (!intervention) return;
 
-    console.log("🎬 Intervention action taken:", action.type);
+    console.log("🎬 Action taken:", action.type);
 
-    // Send action to background script
     try {
       chrome.runtime.sendMessage({
         type: "INTERVENTION_RESPONSE",
@@ -165,8 +196,7 @@ export const InterventionWrapper: React.FC = () => {
       console.error("Failed to send intervention response:", error);
     }
 
-    // Handle specific actions (allow for actions not declared in the Action union)
-    if ((action as any).type === "close_tab") {
+    if (action.type === "block_site") {
       window.close();
     }
 
@@ -178,7 +208,6 @@ export const InterventionWrapper: React.FC = () => {
 
     console.log("❌ Intervention dismissed");
 
-    // Mark as dismissed
     try {
       chrome.runtime.sendMessage({
         type: "INTERVENTION_RESPONSE",
@@ -195,12 +224,7 @@ export const InterventionWrapper: React.FC = () => {
     setIntervention(null);
   };
 
-  if (!intervention) {
-    console.log("💤 No intervention to display");
-    return null;
-  }
-
-  console.log("🎨 Rendering intervention:", intervention.title);
+  if (!intervention) return null;
 
   return (
     <InterventionOverlay
